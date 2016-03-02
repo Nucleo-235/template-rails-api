@@ -7,7 +7,7 @@ gsub_file "Gemfile", /^$\n/, ''
 
 add_source 'https://rubygems.org'
 
-insert_into_file 'Gemfile', "\nruby '2.2.0'", 
+insert_into_file 'Gemfile', "\nruby ENV['CUSTOM_RUBY_VERSION'] || '2.2.4'", 
                  after: "source 'https://rubygems.org'\n"
 
 gem 'rails', '4.2.5'
@@ -22,6 +22,11 @@ gem 'devise_invitable', '~> 1.3.4'
 gem 'carrierwave'
 gem 'carrierwave-aws'
 gem 'carrierwave_backgrounder'
+
+gem 'kaminari'
+gem 'api-pagination'
+
+gem "tzinfo-data", platforms: [:mswin, :mingw, :jruby, :x64_mingw]
 
 gem_group :database do
   gem_group :postgresql do

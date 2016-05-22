@@ -38,6 +38,16 @@ class UserImageUploader < CarrierWave::Uploader::Base
     %w(jpg jpeg gif png)
   end
 
+  def retrieve_from_store!(identifier)
+    # checks if should skip
+    super(identifier) if !model.skip_storage?
+  end
+
+  def cache_dir
+    # should return path to cache dir
+    Rails.root.join 'tmp/uploads'
+  end
+
   # Override the filename of the uploaded files:
   # Avoid using model.id or version_name here, see uploader/store.rb for details.
   # def filename

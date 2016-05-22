@@ -18,7 +18,7 @@ gem 'devise'
 gem 'devise'
 gem 'omniauth'
 gem 'devise_token_auth'
-gem 'devise_invitable', '~> 1.3.4'
+gem 'devise_invitable'
 gem 'carrierwave'
 gem 'carrierwave-aws'
 gem 'carrierwave_backgrounder'
@@ -34,21 +34,15 @@ gem_group :database do
   end
 end
 
-gem_group :workers do
-  gem 'sidekiq', '~> 3.2.6'
-  gem 'redis'
-  gem 'redis-namespace'
-end
+gem 'sidekiq'
+gem 'redis'
+gem 'redis-namespace'
 
-gem_group :android do
-  gem 'gcm' # Google Cloud Messageing
-end
+gem 'gcm' # Google Cloud Messageing
 
 # Logging & BI
-gem_group :logging do
-  gem 'google-analytics-rails'
-  gem 'rollbar', '~> 2.2.1'
-end
+gem 'google-analytics-rails'
+  gem 'rollbar'
 
 gem_group :development do
   gem 'annotate', '>=2.6.0'
@@ -96,133 +90,76 @@ rake "db:create", :env => 'development'
 
 # Ignore rails doc files, Vim/Emacs swap files, .DS_Store, and more
 # ===================================================
-run "cat << EOF >> .gitignore
-# Ignore bundler config.
-/.bundle
+copy_file "template.gitignore", ".gitignore"
 
-# Ignore the default SQLite database.
-/db/*.sqlite3
-/db/*.sqlite3-journal
-/db/schema.rb
 
-# Ignore all logfiles and tempfiles.
-/log/*.log
-/tmp
-
-.DS_Store
-/public/uploads
-
-# vagrant
-/.vagrant
-/Vagrantfile
-/puppet
-/bootstrap.sh
-
-#sublime
-*.sublime-workspace
-EOF"
-
-# Ignore rails doc files, Vim/Emacs swap files, .DS_Store, and more
+# Sublime Project
 # ===================================================
-run "cat << EOF >> #{app_name.gsub!('_', '-')}.sublime-project
-{
-  \"folders\":
-  [
-    {
-      \"follow_symlinks\": true,
-      \"path\": \".\"
-    }
-  ]
-}
-EOF"
+sublime_file_name = "#{app_name.gsub!('_', '-')}"
+copy_file "template.sublime-project", sublime_file_name
 
-# devise & devise token installation
+
+# Devise & devise token installation
+# ===================================================
 run 'rails generate devise:install'
 run 'rails g devise_token_auth:install User auth'
 run 'rails g migration add_type_to_user type:string'
 rake "db:migrate", :env => 'test'
 rake "db:migrate", :env => 'development'
-run "cat << EOF >> app/controllers/registrations_controller.rb
-class RegistrationsController < DeviseTokenAuth::RegistrationsController
 
-  before_filter :configure_sign_up_params, only: [:create]
-  before_filter :configure_account_update_params, only: [:update]
+# Devise controllers
+inside('app/controllers') { run "mkdir overrides"  }
+copy_file "template_registrations_controller.rb", "app/controllers/overrides/registrations_controller.rb"
+copy_file "template_token_validations_controller.rb", "app/controllers/overrides/token_validations_controller.rb"
+run 'rails g controller users update_image me'
+copy_file "template_users_controller.rb", "app/controllers/users_controller.rb"
 
-  private
-
-    def configure_sign_up_params
-      devise_parameter_sanitizer.for(:sign_up).push(:name)
-    end
-
-    def configure_account_update_params
-      devise_parameter_sanitizer.for(:account_update).push(:name)
-    end
-
-end
-EOF"
+# Devise Routes
 gsub_file "config/routes.rb", /mount_devise_token_auth_for 'User', at: 'auth'/,  "mount_devise_token_auth_for 'User', at: 'auth', controllers: {
-    registrations:  'registrations'
+    token_validations:  'overrides/token_validations', 
+    registrations:  'overrides/registrations'
   }"
-run 'rails g controller users update_image'
-gsub_file "app/controllers/users_controller.rb", /class UsersController < ApplicationController
-  def update_image
-  end/,  "class UsersController < ApplicationController
-  before_action :authenticate_user!
+gsub_file "config/routes.rb", /get 'users\/update_image'/,  "post 'users/update_image', to: \"users#update_image\""
+gsub_file "config/routes.rb", /get 'users\/me'/,  "get 'me', to: \"users#me\""
 
-  def update_image
-    current_user.update(update_image_params)
-    render json: current_user
-  end
-
-  def update_image_params
-    params.permit(:image, :image_cache)
-  end"
+# Devise ADMIN
+run 'rails g model admin --parent User'
 run 'rails g scaffold_controller admin'
 gsub_file "app/controllers/admins_controller.rb", /class AdminsController < ApplicationController/,  "class AdminsController < ApplicationController
   before_action :authenticate_user!"
-run "cat << EOF >> app/models/admin.rb
-class Admin < User
-end
-EOF"
-gsub_file "config/routes.rb", /get 'users\/update_image'/,  "post 'users/update_image', to: \"users#update_image\""
 
-# carrierwave
-run "cat << EOF >> config/initializers/carrierwave.rb
-CarrierWave.configure do |config|
-  if Rails.env.production?
-    config.storage = :aws
-    config.aws_bucket =  \"#{app_name.gsub!('-', '.')}.live\"
-  elsif (Rails.env.development? && Rails.application.secrets.aws_access_key_id.present?)
-    config.storage = :aws
-    config.aws_bucket =  \"#{app_name}.dev\"
-  else
-    config.storage = :file
-    config.aws_bucket =  \"#{app_name}\"
-  end
-  config.aws_acl    =  :public_read
 
-  config.aws_credentials = {
-    access_key_id:      Rails.application.secrets.aws_access_key_id,    # required
-    secret_access_key:  Rails.application.secrets.aws_secret_access_key,    # required
-    region: \"sa-east-1\"
-  }
-end
-EOF"
-#run "cp ../../template_file_size_validator.rb lib/file_size_validator.rb"
+# Carrierwave & Uploader
+# ===================================================
+# Carierwave
+copy_file "template_carrierwave.rb", "config/initializers/carrierwave.rb"
+gsub_file "config/initializers/carrierwave.rb", /APP_NAME/, app_name.gsub!('-', '.')
+
+# Validator
 copy_file "template_file_size_validator.rb", "lib/file_size_validator.rb"
-inside('app') do 
-  run "mkdir uploaders" 
-end
-#run "cp ../../template_user_image_uploader.rb app/uploaders/user_image_uploader.rb"
+
+# Uploader
+inside('app') { run "mkdir uploaders"  }
 copy_file "template_user_image_uploader.rb", "app/uploaders/user_image_uploader.rb"
 
+# User Image Property
+# ===================================================
 gsub_file "app/models/user.rb", /class User < ActiveRecord::Base/,  "require 'file_size_validator'
 
 class User < ActiveRecord::Base"
 
 gsub_file "app/models/user.rb", /include DeviseTokenAuth::Concerns::User/,  "include DeviseTokenAuth::Concerns::User
+  attr_accessor :skip_image_storage
   
   mount_uploader :image, UserImageUploader
-  validates :image, allow_blank: true, file_size: { maximum: 3.megabytes.to_i,  message: \"O arquivo enviado é muito grande. Tamanho máximo 3 MB.\"}"
+  validates :image, allow_blank: true, file_size: { maximum: 3.megabytes.to_i,  message: \"O arquivo enviado é muito grande. Tamanho máximo 3 MB.\"}, if: :check_storage?
+
+  def check_storage?
+    !self.skip_image_storage
+  end
+
+  def skip_storage?
+    self.skip_image_storage
+  end"
 
 run 'annotate'

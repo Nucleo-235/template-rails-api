@@ -160,6 +160,16 @@ gsub_file "app/models/user.rb", /include DeviseTokenAuth::Concerns::User/,  "inc
 
   def skip_storage?
     self.skip_image_storage
+  end
+
+  # overrides devise auth token so we don't load image from storage
+  def create_new_auth_token(client_id=nil)
+    begin
+      self.skip_image_storage = true
+      super(client_id)
+    ensure
+      self.skip_image_storage = false
+    end
   end"
 
 run 'annotate'
